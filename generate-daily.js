@@ -1,3 +1,4 @@
+// generate-daily.js (improved – longer games, scaling difficulty)
 const fs = require('fs');
 const path = require('path');
 
@@ -7,44 +8,183 @@ if (!fs.existsSync(GAMES_DIR)) fs.mkdirSync(GAMES_DIR, { recursive: true });
 const mechanics = [
   {
     name: 'tap-enemy',
-    desc: 'Tap the enemies before they escape!',
+    desc: 'Tap enemies before they escape! Gets harder over time.',
     emoji: '👾',
-    start: `gameData.enemies=[];gameData.killed=0;gameData.spawnTimer=0;`,
-    update: `d.spawnTimer++;let lim=Math.max(15,40-Math.min(gameTime*0.3,30));if(d.spawnTimer>lim){d.spawnTimer=0;d.enemies.push({x:Math.random()*W,y:-20,vy:1+Math.random()*2,alive:true,r:12+Math.random()*8});}
-d.enemies.forEach(e=>{if(e.alive){e.y+=e.vy;if(e.y>H+20){e.alive=false;loseLife();}}});
-clks.forEach(c=>{d.enemies.forEach(e=>{if(e.alive&&Math.hypot(c.x-e.x,c.y-e.y)<e.r+5){e.alive=false;d.killed++;addScore(1);if(d.killed>=15)endGame(true);}})});
-d.enemies=d.enemies.filter(e=>e.alive||e.y<H+30);`,
-    draw: `ctx.fillStyle='#1a1a2e';ctx.fillRect(0,0,W,H);
-d.enemies.forEach(e=>{if(e.alive){ctx.fillStyle='#ff3b3b';ctx.beginPath();ctx.arc(e.x,e.y,e.r,0,Math.PI*2);ctx.fill();}});
-ctx.fillStyle='#fff';ctx.font='bold 14px "Courier New"';ctx.fillText('Killed: '+d.killed+'/15',15,25);`
+    start: `gameData.enemies=[];gameData.killed=0;gameData.spawnTimer=0;gameData.level=1;`,
+    update: `let spawnDelay = Math.max(10, 40 - Math.min(gameTime * 0.5, 30));
+d.spawnTimer++;
+if (d.spawnTimer > spawnDelay) {
+  d.spawnTimer = 0;
+  d.enemies.push({
+    x: Math.random() * W,
+    y: -20,
+    vy: 1 + Math.random() * 2 + d.level * 0.3,
+    alive: true,
+    r: 10 + Math.random() * 10
+  });
+}
+d.enemies.forEach(e => {
+  if (e.alive) {
+    e.y += e.vy;
+    if (e.y > H + 20) {
+      e.alive = false;
+      loseLife();
+    }
+  }
+});
+clks.forEach(c => {
+  d.enemies.forEach(e => {
+    if (e.alive && Math.hypot(c.x - e.x, c.y - e.y) < e.r + 5) {
+      e.alive = false;
+      d.killed++;
+      addScore(1);
+      // Give extra life every 10 kills
+      if (d.killed % 10 === 0) { lives = Math.min(lives + 1, 5); updateUI(); }
+      // Progress to next level after reaching target
+      if (d.killed >= 30) {
+        d.level++;
+        d.killed = 0;
+        d.enemies = [];
+        d.spawnTimer = 0;
+        sfxWin();
+        // increase difficulty (faster enemies, more spawn)
+      }
+    }
+  });
+});
+d.enemies = d.enemies.filter(e => e.alive || e.y < H + 30);`,
+    draw: `ctx.fillStyle='#1a1a2e'; ctx.fillRect(0, 0, W, H);
+d.enemies.forEach(e => {
+  if (e.alive) {
+    ctx.fillStyle = '#ff3b3b';
+    ctx.beginPath();
+    ctx.arc(e.x, e.y, e.r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+});
+ctx.fillStyle = '#fff';
+ctx.font = 'bold 14px "Courier New"';
+ctx.fillText('Level: ' + d.level + '  Killed: ' + d.killed, 15, 25);`
   },
   {
     name: 'catch-falling',
-    desc: 'Catch the falling items!',
+    desc: 'Catch good items, avoid bad ones! Speed increases.',
     emoji: '🍎',
-    start: `gameData.items=[];gameData.caught=0;`,
-    update: `if(Math.random()<0.04)d.items.push({x:Math.random()*W,y:-10,vy:2+Math.random()*2,good:Math.random()>0.3,r:12,caught:false});
-d.items.forEach(it=>{if(!it.caught){it.y+=it.vy;if(it.y>H+20){it.caught=true;if(it.good)loseLife();}}});
-clks.forEach(c=>{d.items.forEach(it=>{if(!it.caught&&Math.hypot(c.x-it.x,c.y-it.y)<it.r+5){it.caught=true;if(it.good){d.caught++;addScore(1);if(d.caught>=15)endGame(true);}else{loseLife();}}}});
-d.items=d.items.filter(it=>!it.caught||it.y<H+30);`,
-    draw: `ctx.fillStyle='#2a1a3a';ctx.fillRect(0,0,W,H);
-d.items.forEach(it=>{if(!it.caught){ctx.fillStyle=it.good?'#3bd96b':'#ff3b3b';ctx.beginPath();ctx.arc(it.x,it.y,it.r,0,Math.PI*2);ctx.fill();}});
-ctx.fillStyle='#fff';ctx.font='bold 14px "Courier New"';ctx.fillText('Caught: '+d.caught+'/15',15,25);`
+    start: `gameData.items=[];gameData.caught=0;gameData.missed=0;gameData.level=1;`,
+    update: `let spawnChance = 0.04 + d.level * 0.01;
+if (Math.random() < spawnChance) {
+  d.items.push({
+    x: Math.random() * W,
+    y: -10,
+    vy: 2 + Math.random() * 2 + d.level * 0.3,
+    good: Math.random() > 0.25,
+    r: 12,
+    caught: false
+  });
+}
+d.items.forEach(it => {
+  if (!it.caught) {
+    it.y += it.vy;
+    if (it.y > H + 20) {
+      it.caught = true;
+      if (it.good) loseLife();
+    }
+  }
+});
+clks.forEach(c => {
+  d.items.forEach(it => {
+    if (!it.caught && Math.hypot(c.x - it.x, c.y - it.y) < it.r + 5) {
+      it.caught = true;
+      if (it.good) {
+        d.caught++;
+        addScore(1);
+        if (d.caught % 10 === 0) { lives = Math.min(lives + 1, 5); updateUI(); }
+        if (d.caught >= 30) {
+          d.level++;
+          d.caught = 0;
+          d.items = [];
+          sfxWin();
+        }
+      } else {
+        loseLife();
+      }
+    }
+  });
+});
+d.items = d.items.filter(it => !it.caught || it.y < H + 30);`,
+    draw: `ctx.fillStyle='#2a1a3a'; ctx.fillRect(0, 0, W, H);
+d.items.forEach(it => {
+  if (!it.caught) {
+    ctx.fillStyle = it.good ? '#3bd96b' : '#ff3b3b';
+    ctx.beginPath();
+    ctx.arc(it.x, it.y, it.r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+});
+ctx.fillStyle = '#fff';
+ctx.font = 'bold 14px "Courier New"';
+ctx.fillText('Level: ' + d.level + '  Caught: ' + d.caught, 15, 25);`
   },
   {
     name: 'dodge-blocks',
-    desc: 'Drag the player to dodge blocks!',
+    desc: 'Drag player to dodge falling blocks! Survive as long as possible.',
     emoji: '🏃',
-    start: `gameData.player={x:190,y:350,r:14};gameData.blocks=[];gameData.survived=0;`,
-    update: `if(touchActive){let nx=mx,ny=my;if(nx>14&&nx<W-14&&ny>14&&ny<H-14){gameData.player.x=nx;gameData.player.y=ny;}}
-if(Math.random()<0.04)gameData.blocks.push({x:Math.random()*W,y:-20,vy:2+Math.random()*2,size:20+Math.random()*20,alive:true});
-gameData.blocks.forEach(b=>{if(b.alive){b.y+=b.vy;if(b.y>H+30){b.alive=false;gameData.survived++;addScore(1);if(gameData.survived>=15)endGame(true);}}});
-gameData.blocks.forEach(b=>{if(b.alive&&Math.hypot(gameData.player.x-b.x,gameData.player.y-b.y)<gameData.player.r+b.size/2){loseLife();gameData.blocks=[];}});
-gameData.blocks=gameData.blocks.filter(b=>b.alive||b.y<H+40);`,
-    draw: `ctx.fillStyle='#1a1a3a';ctx.fillRect(0,0,W,H);
-ctx.fillStyle='#00d4ff';ctx.beginPath();ctx.arc(gameData.player.x,gameData.player.y,gameData.player.r,0,Math.PI*2);ctx.fill();
-gameData.blocks.forEach(b=>{if(b.alive){ctx.fillStyle='#ff3b3b';ctx.fillRect(b.x-b.size/2,b.y-b.size/2,b.size,b.size);}});
-ctx.fillStyle='#fff';ctx.font='bold 14px "Courier New"';ctx.fillText('Survived: '+gameData.survived+'/15',15,25);`
+    start: `gameData.player={x:190, y:350, r:14}; gameData.blocks=[]; gameData.survived=0; gameData.level=1;`,
+    update: `if (touchActive) {
+  let nx = mx, ny = my;
+  if (nx > 14 && nx < W - 14 && ny > 14 && ny < H - 14) {
+    gameData.player.x = nx;
+    gameData.player.y = ny;
+  }
+}
+let spawnChance = 0.03 + gameData.level * 0.005;
+if (Math.random() < spawnChance) {
+  gameData.blocks.push({
+    x: Math.random() * W,
+    y: -20,
+    vy: 2 + Math.random() * 2 + gameData.level * 0.2,
+    size: 15 + Math.random() * 20,
+    alive: true
+  });
+}
+gameData.blocks.forEach(b => {
+  if (b.alive) {
+    b.y += b.vy;
+    if (b.y > H + 30) {
+      b.alive = false;
+      gameData.survived++;
+      addScore(1);
+      if (gameData.survived % 10 === 0) { lives = Math.min(lives + 1, 5); updateUI(); }
+      if (gameData.survived >= 30) {
+        gameData.level++;
+        gameData.survived = 0;
+        gameData.blocks = [];
+        sfxWin();
+      }
+    }
+  }
+});
+gameData.blocks.forEach(b => {
+  if (b.alive && Math.hypot(gameData.player.x - b.x, gameData.player.y - b.y) < gameData.player.r + b.size / 2) {
+    loseLife();
+    gameData.blocks = [];
+  }
+});
+gameData.blocks = gameData.blocks.filter(b => b.alive || b.y < H + 40);`,
+    draw: `ctx.fillStyle='#1a1a3a'; ctx.fillRect(0, 0, W, H);
+ctx.fillStyle = '#00d4ff';
+ctx.beginPath();
+ctx.arc(gameData.player.x, gameData.player.y, gameData.player.r, 0, Math.PI * 2);
+ctx.fill();
+gameData.blocks.forEach(b => {
+  if (b.alive) {
+    ctx.fillStyle = '#ff3b3b';
+    ctx.fillRect(b.x - b.size / 2, b.y - b.size / 2, b.size, b.size);
+  }
+});
+ctx.fillStyle = '#fff';
+ctx.font = 'bold 14px "Courier New"';
+ctx.fillText('Level: ' + gameData.level + '  Survived: ' + gameData.survived, 15, 25);`
   }
 ];
 
