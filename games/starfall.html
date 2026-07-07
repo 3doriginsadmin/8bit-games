@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no,viewport-fit=cover"><title>Starfall</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;user-select:none;touch-action:manipulation}
+body{background:#0a0a14;font-family:'Courier New',monospace;display:flex;justify-content:center;align-items:center;min-height:100vh}
+.game-container{background:#111128;border:4px solid #333;border-radius:12px;padding:10px;text-align:center;max-width:420px;position:relative}
+.logo{font-size:3rem}h1{color:#f0c040;font-size:1.5rem;margin:5px 0;text-shadow:2px 2px 0 #000}
+.desc{color:#ccc;font-size:0.9rem;margin-bottom:8px}
+canvas{border:2px solid #444;image-rendering:pixelated;background:#000;display:block;margin:0 auto}
+.info-bar{display:flex;gap:10px;justify-content:center;margin:8px 0;color:#fff;font-size:13px}
+.info-bar span{background:#1a1a35;padding:3px 8px;border-radius:4px}
+.controls{display:flex;gap:6px;flex-wrap:wrap;justify-content:center}
+button,.btn{font-family:'Courier New',monospace;font-weight:bold;font-size:14px;padding:10px 16px;border:3px solid #555;border-radius:6px;cursor:pointer;background:#2a2a45;color:#fff;min-width:44px;min-height:44px;box-shadow:0 3px 0 #1a1a2e;transition:0.08s}
+button:active{transform:translateY(2px);box-shadow:0 1px 0 #1a1a2e;border-color:#f0c040}
+.btn-red{background:#cc2a2a;border-color:#ff5555}.btn-green{background:#2a7a2a;border-color:#55ff55}.btn-blue{background:#2a3a8a;border-color:#5588ff}.btn-yellow{background:#8a7a2a;border-color:#ffcc44;color:#000}.btn-pink{background:#8a2a5a;border-color:#ff66aa}.btn-purple{background:#5a2a8a;border-color:#b44dff}
+.back-link{display:inline-block;margin-top:8px;color:#f0c040;font-size:13px;text-decoration:none}
+.start-overlay{position:absolute;top:0;left:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.7);z-index:5}
+.start-overlay button{font-size:24px;padding:16px 32px;background:#f0c040;color:#000;border-color:#fff}
+</style></head>
+<body>
+<div class="game-container">
+  <div class="logo">🌠</div><h1>Starfall</h1><p class="desc">Catch stars!</p>
+  <canvas id="gc" width="380" height="380"></canvas>
+  <div class="info-bar"><span>⭐ Score: <span id="score">0</span></span><span>❤️ Lives: <span id="lives">3</span></span><span>⏱ <span id="timer">0</span>s</span></div>
+  <div class="controls" id="controls"><span style="color:#fff">👆 Tap items!</span></div>
+  <a class="back-link" href="../index.html">← Back to All Games</a>
+  <div class="start-overlay" id="startOverlay"><button id="startBtn">▶ START</button></div>
+</div>
+<script>
+const canvas=document.getElementById('gc'),ctx=canvas.getContext('2d');ctx.imageSmoothingEnabled=false;
+const W=380,H=380;let score=0,lives=3,gameTime=0,gameRunning=false,awaitingStart=true;let gameData={};let timerInterval,clicks=[],touchActive=false,mouseX=W/2,mouseY=H/2;
+let audioCtx;function initAudio(){if(!audioCtx){try{audioCtx=new(window.AudioContext||window.webkitAudioContext)()}catch(e){}}if(audioCtx&&audioCtx.state==='suspended')audioCtx.resume()}
+function beep(f=440,d=0.1,t='square',v=0.08){if(!audioCtx)return;try{const o=audioCtx.createOscillator(),g=audioCtx.createGain();o.type=t;o.frequency.setValueAtTime(f,audioCtx.currentTime);g.gain.setValueAtTime(v,audioCtx.currentTime);g.gain.exponentialRampToValueAtTime(0.001,audioCtx.currentTime+d);o.connect(g);g.connect(audioCtx.destination);o.start();o.stop(audioCtx.currentTime+d)}catch(e){}}
+function sfxScore(){beep(880,0.08);beep(1100,0.1)}function sfxFail(){beep(150,0.2,'sawtooth')}function sfxWin(){beep(523,0.08);beep(659,0.08);beep(784,0.12)}function sfxPop(){beep(300,0.05)}
+function addScore(n=1){score+=n;sfxScore();updateUI()}function loseLife(){lives--;sfxFail();updateUI();if(lives<=0)endGame()}
+function updateUI(){document.getElementById('score').textContent=score;document.getElementById('lives').textContent=lives;document.getElementById('timer').textContent=gameTime}
+function resetState(){score=0;lives=3;gameTime=0;gameData={};clicks=[];if(timerInterval)clearInterval(timerInterval);updateUI()}
+function startTimer(){if(timerInterval)clearInterval(timerInterval);gameTime=0;updateUI();timerInterval=setInterval(()=>{gameTime++;updateUI()},1000)}
+function endGame(won=false){gameRunning=false;if(timerInterval)clearInterval(timerInterval);if(won)sfxWin();document.getElementById('controls').innerHTML='<button class="btn-green" onclick="restartGame()">🔄 Play Again</button><a class="back-link" href="../index.html">← Menu</a>';document.getElementById('startOverlay').style.display='none'}
+function restartGame(){resetState();GAME_START();gameRunning=false;awaitingStart=true;document.getElementById('startOverlay').style.display='flex';document.getElementById('controls').innerHTML=`<span style="color:#fff">👆 Tap items!</span>`;updateUI()}
+document.getElementById('startBtn').addEventListener('click',()=>{if(awaitingStart){awaitingStart=false;gameRunning=true;startTimer();document.getElementById('startOverlay').style.display='none'}});
+function getPos(e){const r=canvas.getBoundingClientRect();return{x:(e.clientX-r.left)*(W/r.width),y:(e.clientY-r.top)*(H/r.height)}}
+canvas.addEventListener('mousedown',e=>{initAudio();const p=getPos(e);mouseX=p.x;mouseY=p.y;touchActive=true;clicks.push({x:p.x,y:p.y,type:'down'});if(GAME_ONCLICK)GAME_ONCLICK(p.x,p.y,gameData)});
+canvas.addEventListener('mousemove',e=>{const p=getPos(e);mouseX=p.x;mouseY=p.y;if(touchActive&&GAME_ONDRAG)GAME_ONDRAG(p.x,p.y,gameData)});
+canvas.addEventListener('mouseup',()=>{touchActive=false});canvas.addEventListener('mouseleave',()=>{touchActive=false});
+canvas.addEventListener('touchstart',e=>{e.preventDefault();initAudio();const p=getPos(e.touches[0]);mouseX=p.x;mouseY=p.y;touchActive=true;clicks.push({x:p.x,y:p.y,type:'down'});if(GAME_ONCLICK)GAME_ONCLICK(p.x,p.y,gameData)},{passive:false});
+canvas.addEventListener('touchmove',e=>{e.preventDefault();const p=getPos(e.touches[0]);mouseX=p.x;mouseY=p.y;if(touchActive&&GAME_ONDRAG)GAME_ONDRAG(p.x,p.y,gameData)},{passive:false});
+canvas.addEventListener('touchend',()=>{touchActive=false});
+const GAME_START = function() { gameData.items=[]; gameData.caught=0; gameData.level=1; };
+const GAME_UPDATE = function(d,W,H,mx,my,clks){
+      let spd = speedBase + gameTime*0.04 + d.level*0.2;
+      if(Math.random() < 0.04 + d.level*0.005) d.items.push({x:Math.random()*W, y:-10, vy:spd, good:Math.random()>0.3, r:12, caught:false});
+      d.items.forEach(it=>{ if(!it.caught){ it.y += it.vy; if(it.y>H+20){ it.caught=true; if(it.good) loseLife(); } } });
+      clks.forEach(c=>{ d.items.forEach(it=>{ if(!it.caught && Math.hypot(c.x-it.x, c.y-it.y) < it.r+5){ it.caught=true; if(it.good){ d.caught++; addScore(1); if(d.caught%10===0){ lives=Math.min(lives+1,5); updateUI(); } if(d.caught>=30){ d.level++; d.caught=0; d.items=[]; sfxWin(); if(d.level>5) endGame(true); } } else { loseLife(); } } }); });
+      d.items = d.items.filter(it=>!it.caught || it.y<H+30);
+    };
+const GAME_DRAW = function(ctx,W,H,d){ ctx.fillStyle='#1a2a3a'; ctx.fillRect(0,0,W,H); d.items.forEach(it=>{ if(!it.caught){ ctx.fillStyle=it.good?'#3bd96b':'#ff3b3b'; ctx.beginPath(); ctx.arc(it.x, it.y, it.r, 0, Math.PI*2); ctx.fill(); } }); ctx.fillStyle='#fff'; ctx.font='bold 14px "Courier New"'; ctx.fillText('Lvl:'+d.level+' Caught:'+d.caught,15,25); };
+const GAME_ONCLICK = function(x,y,d){ clicks.push({x,y,type:'down'}); };
+const GAME_ONDRAG = null;
+function gameLoop(){if(!gameRunning||awaitingStart){GAME_DRAW(ctx,W,H,gameData);requestAnimationFrame(gameLoop);return}GAME_UPDATE(gameData,W,H,mouseX,mouseY,clicks);ctx.clearRect(0,0,W,H);GAME_DRAW(ctx,W,H,gameData);clicks=[];requestAnimationFrame(gameLoop)}
+GAME_START();gameLoop();
+</script></body></html>
